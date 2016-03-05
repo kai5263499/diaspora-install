@@ -49,7 +49,9 @@ STATE = {
   rvm_source_system: false,
   js_runtime_found: false,
   log_level: 2,
-  git_clone_path: '/srv/diaspora'
+  git_clone_path: '/srv/diaspora',
+  allow_root: false,
+  headless: false
 }
 
 # ==  define message strings  ==================================================
@@ -248,6 +250,10 @@ module Log
     end
 
     def enter_to_continue(msg_id=:enter_continue, prompt=false)
+      if STATE[:headless]
+        return
+      end
+
       Check.interactive?  # just to be sure...
 
       Log.info MESSAGES[msg_id] unless msg_id==""
@@ -387,8 +393,12 @@ module Check
   class << self
     def interactive?
       # try to reopen tty. see: http://stackoverflow.com/a/6840338
-      $stdin.reopen(File.open("/dev/tty", "r")) unless $stdin.tty?
-      Log.fatal MESSAGES[:not_interactive] unless $stdin.tty?  # still not interactive...
+      if not STATE[:headless]
+        $stdin.reopen(File.open("/dev/tty", "r")) unless $stdin.tty?
+        Log.fatal MESSAGES[:not_interactive] unless $stdin.tty?  # still not interactive...
+      else
+        return false
+      end
     end
 
     def root?
@@ -668,9 +678,6 @@ if __FILE__==$0
   STDOUT.sync = true
   require 'optparse'
 
-  Log.fatal MESSAGES[:no_root] if Check.root?
-  Check.interactive?
-
   optparse = OptionParser.new do |opts|
     opts.banner = "Usage: #{File.basename($0, '.*')} [options]"
 
@@ -689,9 +696,23 @@ if __FILE__==$0
       puts opts
       exit
     end
+
+    opts.on('-r', '--allowroot',
+            'Allow install from root account') do
+      STATE[:allowroot] = true
+    end
+
+    opts.on('-y', '--headless',
+            'Allow unattended install') do
+      STATE[:headless] = true
+    end
   end
 
   optparse.parse!
+
+  if STATE[:allowroot] == 0
+    Log.fatal MESSAGES[:no_root] if Check.root? 
+  end
 
   Log.text MESSAGES[:welcome]
   Log.enter_to_continue
